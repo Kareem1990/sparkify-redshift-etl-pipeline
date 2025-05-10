@@ -123,6 +123,9 @@ SELECT song_id, COUNT(*) FROM songplays GROUP BY song_id ORDER BY COUNT(*) DESC 
 SELECT DATE(start_time), COUNT(*) FROM songplays GROUP BY 1 ORDER BY 2 DESC LIMIT 1;
 ```
 
+> Sample output:
+> ![Sample output](query_output.png)
+
 ### 5. `delete_aws_resources.py`
 
 * Deletes the Redshift cluster
@@ -155,6 +158,7 @@ IAM_ROLE_ARN=${iam_role_arn}
 ## 📝 Execution Commands
 
 ```bash
+pip install -r requirements.txt
 python create_aws_resources.py   # Provisions Redshift + IAM Role (auto updates config)
 python create_tables.py          # Create schema
 python etl.py                    # Run ETL pipeline
