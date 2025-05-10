@@ -37,10 +37,17 @@ def main():
     - Closes the connection
     """
     config = configparser.ConfigParser()
-    config.read('dwh.cfg')
+    config.read('dwh.cfg', encoding='utf-8')
 
     # Establish connection using credentials from the [CLUSTER] section
-    conn = psycopg2.connect("host={} dbname={} user={} password={} port={}".format(*config['CLUSTER'].values()))
+    conn = psycopg2.connect(
+    host=config.get("CLUSTER", "HOST"),
+    dbname=config.get("CLUSTER", "DB_NAME"),
+    user=config.get("CLUSTER", "DB_USER"),
+    password=config.get("CLUSTER", "DB_PASSWORD"),
+    port=config.get("CLUSTER", "DB_PORT")
+)
+
     cur = conn.cursor()
 
     # Perform data load and transformation

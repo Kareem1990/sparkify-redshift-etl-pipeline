@@ -48,7 +48,7 @@ def main():
 
     # Load the dwh.cfg file (make sure it's in the same folder)
     config = configparser.ConfigParser()
-    config.read('dwh.cfg')
+    config.read('dwh.cfg', encoding='utf-8')
 
     # The [CLUSTER] section in dwh.cfg should contain:
     # HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT
@@ -61,7 +61,13 @@ def main():
     # DB_PORT=5439
 
     # Connect to the Redshift cluster using the values from the config
-    conn = psycopg2.connect("host={} dbname={} user={} password={} port={}".format(*config['CLUSTER'].values()))
+    conn = psycopg2.connect(
+    host=config.get("CLUSTER", "HOST"),
+    dbname=config.get("CLUSTER", "DB_NAME"),
+    user=config.get("CLUSTER", "DB_USER"),
+    password=config.get("CLUSTER", "DB_PASSWORD"),
+    port=config.get("CLUSTER", "DB_PORT"))
+
     cur = conn.cursor()
 
     # Drop and recreate tables

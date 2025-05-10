@@ -1,4 +1,4 @@
-# 🎷 Sparkify Data Warehouse Pipeline on AWS Redshift
+# 🌷 Sparkify Data Warehouse Pipeline on AWS Redshift
 
 This project builds a cloud-based **Data Warehouse** for a fictional music streaming app, **Sparkify**, using AWS Redshift, S3, and Python.
 
@@ -12,15 +12,21 @@ Design and implement an ETL pipeline that:
 * Loads it into **staging tables** in Amazon **Redshift**
 * Transforms it into a **star-schema** data warehouse for analytics
 
-**The pipeline follows this order:**
+---
 
-0. Add your temporary AWS credentials to `dwh.cfg`
-1. Run `create_aws_resources.py` to provision Redshift and IAM role
-2. Copy the generated Redshift endpoint and IAM role ARN into `dwh.cfg`
-3. Run `create_tables.py` to create staging, fact, and dimension tables
-4. Run `etl.py` to load and transform data into final schema
-5. (Optional) Use Redshift Query Editor to verify contents
-6. (Optional) Run `delete_aws_resources.py` to clean up cloud resources
+## 📦 Installation
+
+Before running any script, install the required Python libraries:
+
+```bash
+pip install -r requirements.txt
+```
+
+This installs:
+
+* `boto3` – AWS SDK for Python
+* `psycopg2-binary` – PostgreSQL adapter to connect to Redshift
+* `configupdater` – For dynamic updates to config files
 
 ---
 
@@ -32,20 +38,23 @@ Design and implement an ETL pipeline that:
 * **Python** – ETL scripting & automation
 * **psycopg2** – PostgreSQL/Redshift connection
 * **boto3** – AWS SDK for Python
-* **ConfigParser** – For dynamic configuration via `dwh.cfg`
+* **ConfigParser + ConfigUpdater** – Dynamic config file management
 
 ---
 
-## 🗂️ Folder Structure
+## 📂 Folder Structure
 
 ```
 .
-├── create_aws_resources.py       # Provisions Redshift + IAM role
+├── create_aws_resources.py       # Provisions Redshift + IAM role (with dynamic config injection)
 ├── create_tables.py              # Drops & creates all tables
-├── delete_aws_resources.py       # Deletes Redshift & IAM role
+├── delete_aws_resources.py       # Deletes Redshift & IAM role (and resets config)
 ├── etl.py                        # Extracts from S3, transforms, loads into Redshift
 ├── sql_queries.py                # SQL commands (CREATE, COPY, INSERT)
-├── dwh.cfg                       # AWS credentials & config values
+├── utils.py                      # Helper to reset placeholders in dwh.cfg
+├── dwh.cfg                       # Configuration file (dynamically updated)
+├── .aws_credentials              # Your local secure AWS credentials (excluded from version control)
+├── requirements.txt              # Python package dependencies
 └── README.md                     # Project documentation
 ```
 
@@ -53,115 +62,117 @@ Design and implement an ETL pipeline that:
 
 ## 🚀 Pipeline Workflow
 
-### 0. Add AWS Credentials
+### 0. Configure AWS Credentials
 
-Before running any script, update your `dwh.cfg` file with your temporary AWS credentials:
+Create a file named `.aws_credentials` in the root directory with:
 
 ```
 [AWS]
-KEY = YOUR_ACCESS_KEY
-SECRET = YOUR_SECRET_KEY
-SESSION = YOUR_SESSION_TOKEN
+KEY=YOUR_ACCESS_KEY
+SECRET=YOUR_SECRET_KEY
 ```
 
-These credentials are required for `boto3` to interact with AWS services.
+**Note:** This file is ignored by `.gitignore` and keeps your credentials secure and separate from `dwh.cfg`.
 
 ### 1. `create_aws_resources.py`
 
+* Resets `dwh.cfg` placeholders
 * Creates:
 
-  * IAM role (AmazonS3ReadOnlyAccess)
+  * IAM role with AmazonS3ReadOnlyAccess policy
   * Redshift cluster with public access
   * Opens port 5439
-* Outputs `Cluster Endpoint` and `IAM Role ARN`
+* Automatically injects:
 
-> 🔔 **Note:** After running this script, you must manually copy the generated **Cluster Endpoint** into the `[CLUSTER]` section and the **IAM Role ARN** into the `[IAM_ROLE]` section of your `dwh.cfg` file.
->
-> 💡 **Hint:** Redshift pricing is **$0.25 per node per hour**. AWS **rounds up** to the nearest full hour if the cluster is active for more than 10 minutes. Be sure to delete the cluster promptly to avoid unnecessary charges.
->
-> 🛠️ **Also:** Be sure to set `PubliclyAccessible=True` during Redshift cluster creation to avoid connection issues.
+  * The Redshift **Cluster Endpoint** into `[CLUSTER]`
+  * The IAM **Role ARN** into `[IAM_ROLE]`
+
+> ✅ No manual edits to `dwh.cfg` required. Everything is dynamically managed.
 
 ### 2. `create_tables.py`
 
-* Connects to Redshift using values from `[CLUSTER]` in `dwh.cfg`
-* Drops existing tables
+* Connects to Redshift using values from `[CLUSTER]`
+* Drops existing tables (if any)
 * Creates:
 
-  * Staging tables: `staging_events`, `staging_songs`
-  * Fact table: `songplays`
-  * Dimension tables: `users`, `songs`, `artists`, `time`
+  * Staging: `staging_events`, `staging_songs`
+  * Fact: `songplays`
+  * Dimensions: `users`, `songs`, `artists`, `time`
 
 ### 3. `etl.py`
 
-* Loads JSON data from S3 into Redshift staging tables using `COPY`
-* Transforms data and loads it into analytics tables using `INSERT`
+* Loads JSON data from S3 into Redshift **staging** tables using `COPY`
+* Transforms & inserts into **analytical** tables using `INSERT`
 
 ### 4. (Optional) Run Queries
 
-Use Amazon Redshift Query Editor to run validation queries, such as:
+Use Amazon Redshift Query Editor or any SQL client to run:
 
 ```sql
 SELECT COUNT(*) FROM users;
 SELECT * FROM songplays LIMIT 5;
 ```
 
-You can also explore insights like:
+Explore:
 
 ```sql
--- Most played songs
-SELECT song_id, COUNT(*) AS play_count
-FROM songplays
-GROUP BY song_id
-ORDER BY play_count DESC
-LIMIT 5;
+-- Top songs
+SELECT song_id, COUNT(*) FROM songplays GROUP BY song_id ORDER BY COUNT(*) DESC LIMIT 5;
 
--- Busiest day
-SELECT DATE(start_time) AS day, COUNT(*) AS play_count
-FROM songplays
-GROUP BY day
-ORDER BY play_count DESC
-LIMIT 1;
+-- Most active day
+SELECT DATE(start_time), COUNT(*) FROM songplays GROUP BY 1 ORDER BY 2 DESC LIMIT 1;
 ```
-
-> Example output:  
-> ![Sample output](query_output.png)
 
 ### 5. `delete_aws_resources.py`
 
 * Deletes the Redshift cluster
 * Detaches policy and deletes IAM role
+* Resets `dwh.cfg` placeholders to:
+
+```ini
+HOST=${redshift_host}
+IAM_ROLE_ARN=${iam_role_arn}
+```
 
 ---
 
-## ⭐ Star Schema
+## ⭐ Star Schema Design
 
-* **Fact Table**
+* **Fact Table:**
 
-  * `songplays`: user activity logs (listening events)
+  * `songplays` – records of user song plays
 
-* **Dimension Tables**
+* **Dimension Tables:**
 
   * `users`, `songs`, `artists`, `time`
 
-* **Staging Tables**
+* **Staging Tables:**
 
-  * `staging_events`, `staging_songs` (raw data from S3)
+  * `staging_events`, `staging_songs`
 
 ---
 
 ## 📝 Execution Commands
 
 ```bash
-python create_aws_resources.py   # Provision IAM + Redshift
-python create_tables.py          # Create schema in Redshift
-python etl.py                    # Load data and transform
-python delete_aws_resources.py   # Tear down resources
+python create_aws_resources.py   # Provisions Redshift + IAM Role (auto updates config)
+python create_tables.py          # Create schema
+python etl.py                    # Run ETL pipeline
+python delete_aws_resources.py   # Cleanup + reset config
 ```
 
 ---
 
 ## 👤 Author
 
-**Kareem Rizk**  
-Cloud & Data Engineer  
-🔗 [GitHub](https://github.com/Kareem1990) — 🔗 [LinkedIn](https://linkedin.com/in/kareemmagdy)
+**Kareem Rizk**
+Cloud & Data Engineer
+🔗 [GitHub](https://github.com/Kareem1990) — [LinkedIn](https://linkedin.com/in/kareemmagdy)
+
+---
+
+## ⚠️ Notes
+
+* Redshift charges \~\$0.25 per node per hour. Always delete the cluster when not in use.
+* Make sure port 5439 is open to connect via `psycopg2`.
+* Project demonstrates best practices for dynamic cloud resource provisioning using Python.

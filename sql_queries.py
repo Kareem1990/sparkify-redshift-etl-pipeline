@@ -4,13 +4,13 @@ import configparser
 # LOAD CONFIGURATION
 # ======================
 config = configparser.ConfigParser()
-config.read('dwh.cfg')
+config.read('dwh.cfg', encoding='utf-8')
 
 # Extract S3 and IAM parameters
 LOG_DATA = config.get("S3", "LOG_DATA")
 LOG_JSONPATH = config.get("S3", "LOG_JSONPATH")
 SONG_DATA = config.get("S3", "SONG_DATA")
-IAM_ROLE_ARN = config.get("IAM_ROLE", "ARN")
+IAM_ROLE_ARN = config.get("IAM_ROLE", "IAM_ROLE_ARN")
 
 # ======================
 # DROP TABLE STATEMENTS

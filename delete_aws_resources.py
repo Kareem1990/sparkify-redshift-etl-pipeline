@@ -1,31 +1,33 @@
 import boto3
 import configparser
 from botocore.exceptions import ClientError
+from utils import reset_placeholders  # ✅ لإعادة placeholders بعد الحذف
 
-# === Load config ===
-config = configparser.ConfigParser()
-config.read('dwh.cfg')
+# === Load AWS credentials from .aws_credentials ===
+creds = configparser.ConfigParser()
+creds.read('.aws_credentials', encoding='utf-8')
 
-KEY = config.get('AWS', 'KEY')
-SECRET = config.get('AWS', 'SECRET')
-SESSION = config.get('AWS', 'SESSION')
+KEY = creds.get('AWS', 'KEY')
+SECRET = creds.get('AWS', 'SECRET')
 REGION = 'us-west-2'
+
+# === Load remaining config from dwh.cfg ===
+config = configparser.ConfigParser()
+config.read('dwh.cfg', encoding='utf-8')
 
 DWH_CLUSTER_IDENTIFIER = config.get("DWH", "DWH_CLUSTER_IDENTIFIER")
 DWH_IAM_ROLE_NAME = config.get("DWH", "DWH_IAM_ROLE_NAME")
 
-# === Create AWS Clients ===
+# === Create AWS clients ===
 redshift = boto3.client('redshift',
                         region_name=REGION,
                         aws_access_key_id=KEY,
-                        aws_secret_access_key=SECRET,
-                        aws_session_token=SESSION)
+                        aws_secret_access_key=SECRET)
 
 iam = boto3.client('iam',
                    region_name=REGION,
                    aws_access_key_id=KEY,
-                   aws_secret_access_key=SECRET,
-                   aws_session_token=SESSION)
+                   aws_secret_access_key=SECRET)
 
 # === Delete Redshift Cluster ===
 try:
@@ -54,4 +56,7 @@ try:
 except ClientError as e:
     print(f"⚠️ Error deleting IAM role: {e}")
 
+# === Reset config placeholders in dwh.cfg ===
+reset_placeholders("dwh.cfg")
+print("🔄 Config file placeholders reset after deletion.")
 print("✅ Done cleaning up AWS resources.")

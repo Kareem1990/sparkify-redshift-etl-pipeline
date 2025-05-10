@@ -1,48 +1,56 @@
+# pip install configupdater
+print("✅ YOU ARE RUNNING THE CORRECT FILE")
+from utils import reset_placeholders
 import boto3
-import configparser
 import json
 import time
 import pandas as pd
 from botocore.exceptions import ClientError
+from string import Template
+import re
+import configparser
 
-# === Step 0: Load configuration values from dwh.cfg ===
-config = configparser.ConfigParser()
-config.read('dwh.cfg')
+# === Load credentials ===
+creds = configparser.ConfigParser()
+creds.read('.aws_credentials')
+KEY = creds.get('AWS', 'KEY')
+SECRET = creds.get('AWS', 'SECRET')
+REGION = "us-west-2"
 
-# AWS credentials (including temporary session token)
-KEY = config.get('AWS', 'KEY')
-SECRET = config.get('AWS', 'SECRET')
-SESSION = config.get('AWS', 'SESSION')
-REGION = 'us-west-2'  # Must match the region of the S3 bucket
+reset_placeholders("dwh.cfg")
 
-# DWH parameters
-DWH_CLUSTER_TYPE = config.get("DWH", "DWH_CLUSTER_TYPE")
-DWH_NUM_NODES = config.get("DWH", "DWH_NUM_NODES")
-DWH_NODE_TYPE = config.get("DWH", "DWH_NODE_TYPE")
-DWH_CLUSTER_IDENTIFIER = config.get("DWH", "DWH_CLUSTER_IDENTIFIER")
-DWH_DB = config.get("DWH", "DWH_DB")
-DWH_DB_USER = config.get("DWH", "DWH_DB_USER")
-DWH_DB_PASSWORD = config.get("DWH", "DWH_DB_PASSWORD")
-DWH_PORT = config.get("DWH", "DWH_PORT")
-DWH_IAM_ROLE_NAME = config.get("DWH", "DWH_IAM_ROLE_NAME")
+# === Step 0: Load template config and extract static values ===
+with open("dwh.cfg", "r", encoding="utf-8") as f:
+    cfg_template = Template(f.read())
+
+def extract_value(content, key):
+    match = re.search(rf"{key}=(.+)", content)
+    return match.group(1).strip().split()[0] if match else None
+
+DWH_CLUSTER_TYPE = extract_value(cfg_template.template, "DWH_CLUSTER_TYPE")
+DWH_NUM_NODES = int(extract_value(cfg_template.template, "DWH_NUM_NODES"))
+DWH_NODE_TYPE = extract_value(cfg_template.template, "DWH_NODE_TYPE")
+DWH_CLUSTER_IDENTIFIER = extract_value(cfg_template.template, "DWH_CLUSTER_IDENTIFIER")
+DWH_DB = extract_value(cfg_template.template, "DWH_DB")
+DWH_DB_USER = extract_value(cfg_template.template, "DWH_DB_USER")
+DWH_DB_PASSWORD = extract_value(cfg_template.template, "DWH_DB_PASSWORD")
+DWH_PORT = int(extract_value(cfg_template.template, "DWH_PORT"))
+DWH_IAM_ROLE_NAME = extract_value(cfg_template.template, "DWH_IAM_ROLE_NAME")
 
 # === Step 1: Create AWS clients ===
 ec2 = boto3.resource('ec2', region_name=REGION,
                      aws_access_key_id=KEY,
-                     aws_secret_access_key=SECRET,
-                     aws_session_token=SESSION)
+                     aws_secret_access_key=SECRET)
 
 iam = boto3.client('iam', region_name=REGION,
                    aws_access_key_id=KEY,
-                   aws_secret_access_key=SECRET,
-                   aws_session_token=SESSION)
+                   aws_secret_access_key=SECRET)
 
 redshift = boto3.client('redshift', region_name=REGION,
                         aws_access_key_id=KEY,
-                        aws_secret_access_key=SECRET,
-                        aws_session_token=SESSION)
+                        aws_secret_access_key=SECRET)
 
-# === Step 2: Create IAM Role for Redshift to access S3 ===
+# === Step 2: Create IAM Role ===
 try:
     print("Creating IAM Role...")
     iam.create_role(
@@ -64,14 +72,12 @@ except ClientError as e:
     else:
         raise
 
-# Attach AmazonS3ReadOnlyAccess policy to the IAM Role
 print("Attaching AmazonS3ReadOnlyAccess policy...")
 iam.attach_role_policy(
     RoleName=DWH_IAM_ROLE_NAME,
     PolicyArn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 )
 
-# Get the ARN of the IAM Role
 roleArn = iam.get_role(RoleName=DWH_IAM_ROLE_NAME)['Role']['Arn']
 print("IAM Role ARN:", roleArn)
 
@@ -81,7 +87,7 @@ try:
     redshift.create_cluster(
         ClusterType=DWH_CLUSTER_TYPE,
         NodeType=DWH_NODE_TYPE,
-        NumberOfNodes=int(DWH_NUM_NODES),
+        NumberOfNodes=DWH_NUM_NODES,
         DBName=DWH_DB,
         ClusterIdentifier=DWH_CLUSTER_IDENTIFIER,
         MasterUsername=DWH_DB_USER,
@@ -92,17 +98,20 @@ try:
 except ClientError as e:
     print("Cluster may already exist:", e)
 
-# === Step 4: Wait until cluster becomes available ===
+# === Step 4: Wait for Redshift cluster to be available ===
 print("Waiting for cluster to become available...")
 while True:
-    cluster_props = redshift.describe_clusters(ClusterIdentifier=DWH_CLUSTER_IDENTIFIER)['Clusters'][0]
-    status = cluster_props['ClusterStatus']
-    if status == 'available':
-        break
-    print(f"Current status: {status}. Waiting 30 seconds...")
-    time.sleep(30)
+    try:
+        cluster_props = redshift.describe_clusters(ClusterIdentifier=DWH_CLUSTER_IDENTIFIER)['Clusters'][0]
+        status = cluster_props['ClusterStatus']
+        if status == 'available':
+            break
+        print(f"Current status: {status}. Waiting 30 seconds...")
+        time.sleep(30)
+    except redshift.exceptions.ClusterNotFoundFault:
+        print("Cluster not found yet. Retrying in 30 seconds...")
+        time.sleep(30)
 
-# Pretty print cluster properties
 def prettyRedshiftProps(props):
     pd.set_option('display.max_colwidth', None)
     keysToShow = ["ClusterIdentifier", "NodeType", "ClusterStatus",
@@ -112,21 +121,24 @@ def prettyRedshiftProps(props):
 
 print(prettyRedshiftProps(cluster_props))
 
-# === Step 5: Extract Endpoint for connection ===
 DWH_ENDPOINT = cluster_props['Endpoint']['Address']
 print(f"Cluster Endpoint: {DWH_ENDPOINT}")
 
-# === Step 6: Open port 5439 in the VPC security group ===
+# === Step 5: Open port 5439 ===
 try:
     vpc = ec2.Vpc(id=cluster_props['VpcId'])
-    defaultSg = list(vpc.security_groups.all())[0]
+    sgs = list(vpc.security_groups.all())
+    if not sgs:
+        raise Exception("No security groups found in VPC.")
+    defaultSg = sgs[0]
+
     print("Authorizing ingress on port 5439...")
     defaultSg.authorize_ingress(
         GroupName=defaultSg.group_name,
         CidrIp='0.0.0.0/0',
         IpProtocol='TCP',
-        FromPort=int(DWH_PORT),
-        ToPort=int(DWH_PORT)
+        FromPort=DWH_PORT,
+        ToPort=DWH_PORT
     )
 except ClientError as e:
     if "InvalidPermission.Duplicate" in str(e):
@@ -134,7 +146,23 @@ except ClientError as e:
     else:
         raise
 
-# === Final Output ===
-print("✅ Redshift cluster created successfully!")
+# === Step 6: Write final config with values ===
+filled = cfg_template.substitute(
+    redshift_host=DWH_ENDPOINT,
+    iam_role_arn=roleArn
+)
+
+with open("dwh.cfg", "w", encoding="utf-8") as f:
+    f.write(filled)
+
+# === Step 7: Validate replacement worked ===
+with open("dwh.cfg", "r", encoding="utf-8") as f:
+    content = f.read()
+    assert "${" not in content, "❌ Placeholder not replaced properly!"
+    assert "redshift_host" not in content, "❌ HOST placeholder still exists!"
+    assert "iam_role_arn" not in content, "❌ IAM_ROLE_ARN placeholder still exists!"
+
+print("✅ All placeholders replaced successfully.")
+print("✅ Config file updated dynamically with actual values!")
 print(f"🔗 Endpoint: {DWH_ENDPOINT}")
 print(f"🔐 IAM Role ARN: {roleArn}")
