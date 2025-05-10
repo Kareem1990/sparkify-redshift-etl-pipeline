@@ -116,11 +116,19 @@ SELECT * FROM songplays LIMIT 5;
 Explore:
 
 ```sql
--- Top songs
-SELECT song_id, COUNT(*) FROM songplays GROUP BY song_id ORDER BY COUNT(*) DESC LIMIT 5;
 
--- Most active day
-SELECT DATE(start_time), COUNT(*) FROM songplays GROUP BY 1 ORDER BY 2 DESC LIMIT 1;
+SELECT song_id, COUNT(*) AS play_count
+FROM songplays
+GROUP BY song_id
+ORDER BY play_count DESC
+LIMIT 5;
+
+-- Busiest day (most activity)
+SELECT DATE(start_time) AS day, COUNT(*) AS play_count
+FROM songplays
+GROUP BY day
+ORDER BY play_count DESC
+LIMIT 1;
 ```
 
 > Sample output:
