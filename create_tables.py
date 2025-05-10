@@ -1,5 +1,3 @@
-# pip install psycopg2-binary
-
 import configparser  # Used to read configuration from the dwh.cfg file
 import psycopg2      # PostgreSQL adapter to connect to Redshift
 from sql_queries import create_table_queries, drop_table_queries
