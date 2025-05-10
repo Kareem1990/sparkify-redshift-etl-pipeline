@@ -171,7 +171,7 @@ python delete_aws_resources.py   # Cleanup + reset config
 
 **Kareem Rizk**
 Cloud & Data Engineer
-🔗 [GitHub](https://github.com/Kareem1990) — [LinkedIn](https://linkedin.com/in/kareemmagdy)
+🔗 [GitHub](https://github.com/Kareem1990) — [LinkedIn](https://www.linkedin.com/in/kareem-rizk/)
 
 ---
 
